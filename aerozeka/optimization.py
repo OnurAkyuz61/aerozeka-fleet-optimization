@@ -7,7 +7,7 @@ Kapasiteye göre uygun uçakları filtreler ve en düşük yakıt maliyetli uça
 from dataclasses import dataclass
 from typing import List
 
-from data import Flight, Aircraft, get_all_aircraft
+from aerozeka.data import Flight, Aircraft, get_all_aircraft
 
 
 @dataclass

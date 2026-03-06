@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-AeroZeka — Giriş noktası.
-Proje kökünden çalıştırın: python main.py
-"""
+"""python -m aerozeka ile çalıştırma."""
 
 from aerozeka.ui import run_app
 
