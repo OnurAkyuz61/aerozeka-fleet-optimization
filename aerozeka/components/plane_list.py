@@ -1,115 +1,147 @@
 # -*- coding: utf-8 -*-
-"""Uçak listesi: thumbnail (PIL), kapasite, yakıt; en ideal yeşil vurgu + Neden Seçildi?."""
+"""Uçak listesi: CTkFrame kartlar, koyu arka plan, ideal kart yeşil (#2ecc71)."""
 
 import os
-import tkinter as tk
-from tkinter import ttk
 from typing import List, Optional
+
+import customtkinter as ctk
 
 from aerozeka.core import AircraftCandidate
 
-# Pillow opsiyonel; yoksa sadece metin gösterilir
 try:
-    from PIL import Image, ImageTk, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
 
-THUMB_W, THUMB_H = 48, 48
+THUMB_W, THUMB_H = 44, 44
+CARD_CORNER = 10
+IDEAL_FG = "#2ecc71"
+CARD_FG = ("gray28", "gray22")
 
 
-def _placeholder_image(key: str):
-    """Resim yoksa placeholder: renkli kare + kısa metin."""
-    if not _PIL_AVAILABLE:
-        return None
-    try:
-        img = Image.new("RGB", (THUMB_W, THUMB_H), color=(220, 230, 240))
-        d = ImageDraw.Draw(img)
-        text = (key[:6].upper() if key else "?")
-        try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 10)
-        except Exception:
-            font = ImageFont.load_default()
-        bbox = d.textbbox((0, 0), text, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        d.text(((THUMB_W - tw) // 2, (THUMB_H - th) // 2), text, fill=(80, 80, 80), font=font)
-        return img
-    except Exception:
-        return Image.new("RGB", (THUMB_W, THUMB_H), color=(200, 200, 200))
-
-
-def _load_thumbnail(assets_dir: str, image_key: str):
-    """Önce assets/ içinden yükle, yoksa placeholder üret. PIL yoksa None."""
-    if not _PIL_AVAILABLE:
-        return None
+def _thumbnail_path(assets_dir: str, image_key: str) -> Optional[str]:
+    """Varsa resim dosya yolu, yoksa None."""
     path = os.path.join(assets_dir, f"{image_key}.png")
-    if os.path.isfile(path):
-        try:
-            return Image.open(path).convert("RGB").resize((THUMB_W, THUMB_H))
-        except Exception:
-            pass
-    return _placeholder_image(image_key)
+    return path if os.path.isfile(path) else None
 
 
-class PlaneList(ttk.LabelFrame):
+class PlaneList(ctk.CTkFrame):
     """
-    Uçaklar: sol thumbnail, sağda isim/kapasite/yakıt.
-    İdeal satır yeşil çerçeve; altta 'Neden Seçildi?' metni.
+    Uygun uçaklar: alt alta CTkFrame kartlar.
+    Koyu gri kartlar, beyaz metin; en ideal kart yeşil (#2ecc71), siyah metin.
     """
 
-    def __init__(self, parent: tk.Misc, assets_dir: str = "", **kwargs):
-        super().__init__(parent, text=" Uygun Uçaklar ", padding=8, **kwargs)
+    def __init__(self, parent: ctk.CTk, assets_dir: str = "", **kwargs):
+        super().__init__(
+            parent,
+            corner_radius=10,
+            fg_color=("gray25", "gray20"),
+            **kwargs,
+        )
         self._assets_dir = assets_dir or self._default_assets_dir()
-        self._inner: Optional[ttk.Frame] = None
-        self._explanation_label: Optional[ttk.Label] = None
-        self._photos: list = []  # referans tutulmalı
+        self._scroll: Optional[ctk.CTkScrollableFrame] = None
+        self._explanation_label: Optional[ctk.CTkLabel] = None
+        self._image_refs: list = []
 
     @staticmethod
     def _default_assets_dir() -> str:
         return os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
 
     def _build(self) -> None:
-        self._inner = ttk.Frame(self)
-        self._inner.pack(fill=tk.BOTH, expand=True)
-        self._explanation_label = ttk.Label(self, text="", wraplength=400, font=("Helvetica Neue", 10))
-        self._explanation_label.pack(anchor=tk.W, pady=(8, 0))
+        if self._scroll is not None:
+            return
+        header = ctk.CTkLabel(
+            self,
+            text="Uygun Uçaklar",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("gray90", "gray90"),
+        )
+        header.pack(anchor="w", padx=16, pady=(16, 10))
+
+        self._scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self._scroll.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+        self._explanation_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=("gray70", "gray70"),
+            wraplength=340,
+            justify="left",
+        )
+        self._explanation_label.pack(anchor="w", padx=16, pady=(8, 16))
 
     def set_candidates(self, candidates: List[AircraftCandidate], explanation: str = "") -> None:
-        """Listeyi güncelle; ideal satırı vurgula, açıklamayı yaz."""
-        if self._inner is None:
+        if self._scroll is None:
             self._build()
-        for w in self._inner.winfo_children():
+        for w in self._scroll.winfo_children():
             w.destroy()
-        self._photos.clear()
+        self._image_refs.clear()
 
         if not candidates:
-            ttk.Label(self._inner, text="Bu sefer için uygun uçak yok.").pack(anchor=tk.W)
+            ctk.CTkLabel(
+                self._scroll,
+                text="Bu sefer için uygun uçak yok.",
+                text_color=("gray60", "gray60"),
+            ).pack(anchor="w", pady=8)
             if self._explanation_label:
-                self._explanation_label.config(text="")
+                self._explanation_label.configure(text="")
             return
 
         for c in candidates:
             is_ideal = c.is_ideal
-            try:
-                row_bg = "#d4edda" if is_ideal else (self._inner.cget("background") if self._inner.winfo_exists() else None)
-            except Exception:
-                row_bg = None
-            row_bg = row_bg or ("#d4edda" if is_ideal else "#f0f0f0")
-            row = tk.Frame(self._inner, bg=row_bg, padx=6, pady=4)
-            row.pack(fill=tk.X, pady=2)
-            # Thumbnail (PIL varsa)
-            img = _load_thumbnail(self._assets_dir, c.aircraft.image_key or "plane")
-            if img is not None and _PIL_AVAILABLE:
-                photo = ImageTk.PhotoImage(img)
-                self._photos.append(photo)
-                lbl_img = tk.Label(row, image=photo, bg=row.cget("bg"))
-                lbl_img.image = photo
-                lbl_img.pack(side=tk.LEFT, padx=(0, 10))
-            # Metin
-            text = f"{c.aircraft.name}  ·  Kapasite: {c.aircraft.capacity}  ·  Yakıt: ~{int(round(c.total_fuel_liters))} L"
-            font = ("Helvetica Neue", 11, "bold") if is_ideal else ("Helvetica Neue", 11)
-            lbl_text = tk.Label(row, text=text, font=font, bg=row.cget("bg"))
-            lbl_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            fg = IDEAL_FG if is_ideal else CARD_FG
+            text_color = "black" if is_ideal else ("gray90", "gray90")
+
+            card = ctk.CTkFrame(
+                self._scroll,
+                corner_radius=CARD_CORNER,
+                fg_color=fg,
+                height=72,
+            )
+            card.pack(fill="x", pady=4)
+            card.pack_propagate(False)
+
+            # Sol: küçük ikon (dosya varsa CTkImage, yoksa metin)
+            thumb_path = _thumbnail_path(self._assets_dir, c.aircraft.image_key or "plane")
+            if thumb_path:
+                try:
+                    img = ctk.CTkImage(light_image=thumb_path, dark_image=thumb_path, size=(THUMB_W, THUMB_H))
+                    self._image_refs.append(img)
+                    ctk.CTkLabel(card, text="", image=img).pack(side="left", padx=12, pady=14)
+                except Exception:
+                    _icon_label(card, c.aircraft.name, text_color).pack(side="left", padx=12, pady=14)
+            else:
+                _icon_label(card, c.aircraft.name, text_color).pack(side="left", padx=12, pady=14)
+
+            # Sağ: isim, kapasite, yakıt
+            line1 = f"{c.aircraft.name}"
+            line2 = f"Kapasite: {c.aircraft.capacity}  ·  Tahmini yakıt: ~{int(round(c.total_fuel_liters))} L"
+            font_title = ctk.CTkFont(size=14, weight="bold")
+            font_sub = ctk.CTkFont(size=12)
+
+            right = ctk.CTkFrame(card, fg_color="transparent")
+            right.pack(side="left", fill="both", expand=True, padx=(0, 16), pady=12)
+            ctk.CTkLabel(right, text=line1, font=font_title, text_color=text_color).pack(anchor="w")
+            ctk.CTkLabel(right, text=line2, font=font_sub, text_color=text_color).pack(anchor="w")
 
         if self._explanation_label:
-            self._explanation_label.config(text=f"Neden Seçildi? {explanation}" if explanation else "")
+            self._explanation_label.configure(
+                text=f"Neden Seçildi? {explanation}" if explanation else ""
+            )
+
+
+def _icon_label(parent: ctk.CTkFrame, name: str, text_color: str) -> ctk.CTkLabel:
+    """Resim yoksa kısa metin ikonu (örn. B737)."""
+    short = name[:4].upper() if name else "✈"
+    return ctk.CTkLabel(
+        parent,
+        text=short,
+        width=THUMB_W,
+        height=THUMB_H,
+        font=ctk.CTkFont(size=11, weight="bold"),
+        text_color=text_color,
+        fg_color=("gray35", "gray30"),
+        corner_radius=8,
+    )

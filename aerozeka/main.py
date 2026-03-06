@@ -1,61 +1,80 @@
 # -*- coding: utf-8 -*-
 """
-AeroZeka ana penceresi: sadece pencere ve ana frame; bileşenleri yükler ve birbirine bağlar.
+AeroZeka ana penceresi: CustomTkinter ile koyu tema, yuvarlak frame'ler.
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox
 import threading
+from tkinter import messagebox
+
+import customtkinter as ctk
 
 from aerozeka.core import DataFetcher, Optimizer
 from aerozeka.components import SearchBar, MapWidget, FlightInfo, PlaneList
 from aerozeka.assets import ensure_placeholders
 
+# Tema (pencere oluşturulmadan önce)
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-class App:
-    """Ana uygulama: pencere + bileşen orkestrasyonu."""
+
+class App(ctk.CTk):
+    """Ana uygulama: CTk pencere + bileşen orkestrasyonu."""
 
     def __init__(self):
+        super().__init__()
         ensure_placeholders()
-        self.root = tk.Tk()
-        self.root.title("AeroZeka — Filo Atama")
-        self.root.minsize(720, 620)
-        self.root.geometry("800x650")
+        self.title("AeroZeka — Filo Atama")
+        self.minsize(780, 660)
+        self.geometry("860x700")
 
         self._fetcher = DataFetcher()
         self._optimizer = Optimizer()
         self._searching = False
-        self._status_label: tk.Label | None = None
+        self._status_label: ctk.CTkLabel | None = None
 
         self._build_ui()
 
     def _build_ui(self) -> None:
-        main = ttk.Frame(self.root, padding=20)
-        main.pack(fill=tk.BOTH, expand=True)
+        # Ana container: padding, koyu arka plan
+        main = ctk.CTkFrame(self, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=24, pady=24)
 
-        ttk.Label(main, text="AeroZeka", font=("Helvetica Neue", 18, "bold")).pack(pady=(0, 4))
-        ttk.Label(main, text="Sefer numarası veya rota girin (örn: TK2828, IST-TZX)").pack(pady=(0, 12))
+        # Başlık
+        ctk.CTkLabel(
+            main, text="AeroZeka",
+            font=ctk.CTkFont(family="Helvetica Neue", size=24, weight="bold"),
+            text_color=("gray90", "gray90"),
+        ).pack(pady=(0, 4))
+        ctk.CTkLabel(
+            main, text="Sefer numarası veya rota girin (örn: TK2828, IST-TZX)",
+            font=ctk.CTkFont(size=13),
+            text_color=("gray70", "gray70"),
+        ).pack(pady=(0, 16))
 
         self._search_bar = SearchBar(main, on_search=self._on_search)
-        self._search_bar.pack(fill=tk.X, pady=(0, 16))
+        self._search_bar.pack(fill="x", pady=(0, 12))
 
-        self._status_label = ttk.Label(main, text="", font=("Helvetica Neue", 11))
-        self._status_label.pack(pady=(0, 8))
+        self._status_label = ctk.CTkLabel(
+            main, text="",
+            font=ctk.CTkFont(size=12),
+            text_color=("gray60", "gray60"),
+        )
+        self._status_label.pack(pady=(0, 16))
 
-        content = ttk.Frame(main)
-        content.pack(fill=tk.BOTH, expand=True)
+        content = ctk.CTkFrame(main, fg_color="transparent")
+        content.pack(fill="both", expand=True)
 
-        left = ttk.Frame(content)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 12))
+        left = ctk.CTkFrame(content, fg_color="transparent")
+        left.pack(side="left", fill="both", expand=True, padx=(0, 16))
         self._flight_info = FlightInfo(left)
-        self._flight_info.pack(fill=tk.X, pady=(0, 10))
-        self._map = MapWidget(left, width=380, height=220)
-        self._map.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self._flight_info.pack(fill="x", pady=(0, 12))
+        self._map = MapWidget(left, width=400, height=240)
+        self._map.pack(fill="both", expand=True, pady=(0, 12))
 
-        right = ttk.Frame(content)
-        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        right = ctk.CTkFrame(content, fg_color="transparent")
+        right.pack(side="right", fill="both", expand=True)
         self._plane_list = PlaneList(right)
-        self._plane_list.pack(fill=tk.BOTH, expand=True)
+        self._plane_list.pack(fill="both", expand=True)
 
     def _on_search(self, query: str) -> None:
         if not query:
@@ -66,11 +85,11 @@ class App:
         self._searching = True
         self._search_bar.set_busy(True)
         if self._status_label:
-            self._status_label.config(text="Aranıyor...")
+            self._status_label.configure(text="Aranıyor...")
 
         def run():
             flight = self._fetcher.fetch(query)
-            self.root.after(0, lambda: self._on_result(query, flight))
+            self.after(0, lambda: self._on_result(query, flight))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -78,7 +97,7 @@ class App:
         self._searching = False
         self._search_bar.set_busy(False)
         if self._status_label:
-            self._status_label.config(text="")
+            self._status_label.configure(text="")
 
         if flight is None:
             messagebox.showwarning("Sonuç yok", f"'{query}' için sefer bulunamadı.")
@@ -99,8 +118,9 @@ class App:
         self._plane_list.set_candidates(candidates, explanation)
 
     def run(self) -> None:
-        self.root.mainloop()
+        self.mainloop()
 
 
 def run_app() -> None:
-    App().run()
+    app = App()
+    app.run()

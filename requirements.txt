@@ -10,5 +10,8 @@ tkintermapview>=1.20
 # Uçak thumbnail ve placeholder resimler
 Pillow>=9.0
 
-# tkintermapview / FlightRadarAPI ortak bağımlılıkları (genelde otomatik kurulur)
-# requests, customtkinter, geocoder
+# Modern koyu tema arayüzü
+customtkinter>=5.2.0
+
+# Ortak bağımlılıklar (genelde otomatik kurulur)
+# requests, geocoder
