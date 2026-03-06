@@ -2,12 +2,14 @@
 """
 AeroZeka - Arayüz modülü.
 Tkinter/ttk ile arama, sefer kartı, uygun uçak listesi ve en ideal seçim arayüzü.
+Veri çekilirken 'Aranıyor...' gösterilir; veri API veya yerel kaynaktan gelir.
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import threading
 
-from aerozeka.data import find_flight_by_number, find_flight_by_route
+from aerozeka.data import find_flight
 from aerozeka.optimization import get_suitable_aircraft, get_ideal_explanation
 
 
@@ -47,8 +49,11 @@ class AeroZekaApp:
         self._build_ui()
         self._flight_card_frame: ttk.Frame | None = None
         self._table_frame: ttk.Frame | None = None
-        self._explanation_label: ttk.Label | None = None
+        self._explanation_label: ttk.Frame | None = None
         self._tree: ttk.Treeview | None = None
+        self._searching_label: ttk.Label | None = None
+        self._search_btn: ttk.Button | None = None
+        self._searching = False
 
     def _build_ui(self):
         main = ttk.Frame(self.root, padding=24)
@@ -66,14 +71,18 @@ class AeroZekaApp:
         self.entry = ttk.Entry(search_frame, width=40, font=FONT_BODY)
         self.entry.pack(side=tk.LEFT, padx=(0, 10))
         self.entry.bind("<Return>", lambda e: self._on_search())
-        btn = ttk.Button(search_frame, text="Sefer Ara", command=self._on_search)
-        btn.pack(side=tk.LEFT)
+        self._search_btn = ttk.Button(search_frame, text="Sefer Ara", command=self._on_search)
+        self._search_btn.pack(side=tk.LEFT)
 
-        # --- Sonuç alanı (kart + tablo + açıklama) ---
+        # --- Sonuç alanı (Aranıyor... / kart + tablo + açıklama) ---
         self.result_frame = ttk.Frame(main)
         self.result_frame.pack(fill=tk.BOTH, expand=True)
 
     def _clear_results(self):
+        """Mevcut sonuç alanını (kart, tablo, açıklama, Aranıyor) temizler."""
+        if self._searching_label:
+            self._searching_label.destroy()
+            self._searching_label = None
         if self._flight_card_frame:
             self._flight_card_frame.destroy()
             self._flight_card_frame = None
@@ -85,16 +94,42 @@ class AeroZekaApp:
             self._explanation_label = None
         self._tree = None
 
+    def _show_searching(self):
+        """Sonuç alanında 'Aranıyor...' ibaresini gösterir."""
+        self._searching_label = ttk.Label(
+            self.result_frame,
+            text="Aranıyor...",
+            font=("Helvetica Neue", 14),
+        )
+        self._searching_label.pack(pady=40)
+
     def _on_search(self):
         query = self.entry.get().strip()
         if not query:
             messagebox.showinfo("Bilgi", "Lütfen sefer numarası veya rota girin (örn: TK2828 veya IST-TZX).")
             return
+        if self._searching:
+            return
 
-        flight = find_flight_by_number(query) or find_flight_by_route(query)
+        self._searching = True
+        self._search_btn.config(state=tk.DISABLED)
+        self._clear_results()
+        self._show_searching()
+
+        def do_search():
+            flight = find_flight(query)
+            # UI güncellemesini ana iş parçacığında yap
+            self.root.after(0, lambda: self._on_search_done(query, flight))
+
+        threading.Thread(target=do_search, daemon=True).start()
+
+    def _on_search_done(self, query: str, flight):
+        """Arama tamamlandığında çağrılır (ana thread). Sonuçları gösterir veya hata verir."""
+        self._searching = False
+        self._search_btn.config(state=tk.NORMAL)
         self._clear_results()
 
-        if not flight:
+        if flight is None:
             messagebox.showwarning("Sonuç yok", f"'{query}' için sefer bulunamadı.")
             return
 
@@ -104,6 +139,7 @@ class AeroZekaApp:
         self._show_explanation(flight, candidates)
 
     def _show_flight_card(self, flight):
+        """Sefer bilgileri kartını doldurur."""
         card = ttk.LabelFrame(self.result_frame, text=" Sefer Bilgileri ", padding=CARD_PAD)
         card.pack(fill=tk.X, pady=(0, 16))
         self._flight_card_frame = card
@@ -113,6 +149,7 @@ class AeroZekaApp:
         ttk.Label(card, text=f"Beklenen Yolcu Sayısı: {flight.expected_passengers}").pack(anchor=tk.W)
 
     def _show_aircraft_table(self, flight, candidates):
+        """Uygun uçaklar tablosu; en ideal uçak yeşil vurgulu."""
         table_frame = ttk.Frame(self.result_frame)
         table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
         self._table_frame = table_frame
@@ -152,6 +189,7 @@ class AeroZekaApp:
         self._tree = tree
 
     def _show_explanation(self, flight, candidates):
+        """Sistemin neden o uçağı seçtiğini anlatan açıklama metnini en altta gösterir."""
         text = get_ideal_explanation(flight, candidates)
         if not text:
             return

@@ -1,2 +1,9 @@
 # AeroZeka - Filo Atama
-# Python 3.8+ (tkinter standart kütüphanede gelir, ek paket gerekmez)
+# Python 3.8+
+
+# Gerçek uçuş verisi (API key gerektirmez)
+FlightRadarAPI>=1.3.34
+
+# FlightRadarAPI bağımlılıkları (paket ile birlikte kurulur)
+# brotli
+# requests
