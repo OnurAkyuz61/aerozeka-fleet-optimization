@@ -1,0 +1,2 @@
+# AeroZeka - Filo Atama
+# Python 3.8+ (tkinter standart kütüphanede gelir, ek paket gerekmez)
