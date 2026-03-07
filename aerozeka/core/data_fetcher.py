@@ -46,6 +46,7 @@ POPULAR_AIRPORTS: dict[str, tuple[float, float, str]] = {
     "JFK": (40.6398, -73.7787, "New York JFK"),
     "LAX": (33.9425, -118.4081, "Los Angeles"),
     "LHR": (51.4700, -0.4543, "Londra Heathrow"),
+    "BRU": (50.9014, 4.4844, "Brüksel"),
     "CDG": (49.0097, 2.5478, "Paris Charles de Gaulle"),
     "FRA": (50.0379, 8.5622, "Frankfurt"),
     "AMS": (52.3105, 4.7683, "Amsterdam"),
@@ -110,14 +111,15 @@ class DataFetcher:
     def fetch(self, query: str) -> Optional[Flight]:
         """
         Sefer numarası (TK2828) veya rota (IST-SFO) ile uçuş döndürür.
-        Sıra: API -> yerel liste -> rota fallback (popüler havalimanları + Haversine).
-        Sadece sözlükte olmayan rota/veri girilirse None (Sefer bulunamadı).
+        Sıra: FlightRadar API (anlık) -> web_scraper (planlı) -> yerel liste -> rota fallback.
         """
         q = query.strip().upper().replace(" ", "")
         if not q:
             return None
 
         flight = self._fetch_from_api(q)
+        if flight is None:
+            flight = self._fetch_from_scraper(q)
         if flight is None:
             flight = self._fetch_from_fallback(q)
         if flight is None and self._is_route_format(q):
@@ -254,6 +256,45 @@ class DataFetcher:
                 )
             return None
         except (TimeoutError, ConnectionError, OSError, Exception):
+            return None
+
+    def _fetch_from_scraper(self, query: str) -> Optional[Flight]:
+        """
+        Uçuş numarası (TK1938 vb.) ile web scraper'dan kalkış/varış IATA çeker.
+        Sadece uçuş numarası formatında dener; hata/bot yakalanırsa None, uygulama çökmez.
+        """
+        if self._is_route_format(query):
+            return None
+        try:
+            from .web_scraper import scrape_flight_route
+            data = scrape_flight_route(query)
+            if not data:
+                return None
+            orig = (data.get("origin_iata") or "").strip().upper()
+            dest = (data.get("dest_iata") or "").strip().upper()
+            if not orig or not dest:
+                return None
+            orig_info = _AIRPORTS_UPPER.get(orig)
+            dest_info = _AIRPORTS_UPPER.get(dest)
+            if not orig_info or not dest_info:
+                return None
+            olat, olon, origin_name = orig_info
+            dlat, dlon, dest_name = dest_info
+            distance_km = _distance_km(olat, olon, dlat, dlon)
+            route_str = f"{orig}-{dest}"
+            return Flight(
+                flight_number=query,
+                route=route_str,
+                origin=origin_name,
+                destination=dest_name,
+                distance_km=round(distance_km, 1),
+                expected_passengers=_DEFAULT_PAX,
+                origin_lat=olat,
+                origin_lon=olon,
+                dest_lat=dlat,
+                dest_lon=dlon,
+            )
+        except Exception:
             return None
 
     def _fetch_from_fallback(self, query: str) -> Optional[Flight]:

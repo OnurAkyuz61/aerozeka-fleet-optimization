@@ -22,5 +22,11 @@ joblib>=1.2.0
 # Mesafe hesaplama (rota fallback; yoksa Haversine kullanılır)
 geopy>=2.4.0
 
+# Web scraper (uçuş durumu sitelerinden planlı uçuş verisi; JS render + bot bypass)
+playwright>=1.40.0
+
 # Ortak bağımlılıklar (genelde otomatik kurulur)
 # requests, geocoder
+#
+# Playwright kurulumu sonrası tarayıcı indirmek için:
+#   playwright install chromium
