@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 FlightRadar24 API ile uçuş/rota verisi (koordinatlarla) çeker.
-API veri bulamazsa: yerel liste, ardından rota fallback (popüler havalimanları + Haversine).
+API timeout/bağlantı hatasında çökme yok; yerel liste ve rota fallback devreye girer.
 """
 
 import math
@@ -15,6 +15,13 @@ try:
 except ImportError:
     _FR24_AVAILABLE = False
 
+# geopy opsiyonel; yoksa Haversine kullanılır
+try:
+    from geopy.distance import geodesic as _geodesic
+    _GEOPY_AVAILABLE = True
+except ImportError:
+    _GEOPY_AVAILABLE = False
+
 # Uçak tipi -> tahmini yolcu
 _AIRCRAFT_CAPACITY = {
     "B738": 189, "B737": 148, "B739": 220, "A320": 180, "A321": 220,
@@ -23,8 +30,8 @@ _AIRCRAFT_CAPACITY = {
 _DEFAULT_KM = 800.0
 _DEFAULT_PAX = 150
 
-# Popüler havalimanları: IATA -> (enlem, boylam, isim)
-# Rota fallback için; sözlükte yoksa "Sefer bulunamadı" gösterilir
+# Geniş havalimanları sözlüğü: IATA -> (enlem, boylam, isim)
+# API hata/veri yoksa rota fallback; sözlükte yoksa "Sefer bulunamadı"
 POPULAR_AIRPORTS: dict[str, tuple[float, float, str]] = {
     "IST": (41.2753, 28.7519, "İstanbul"),
     "SAW": (40.8986, 29.3092, "İstanbul Sabiha Gökçen"),
@@ -48,6 +55,17 @@ POPULAR_AIRPORTS: dict[str, tuple[float, float, str]] = {
     "VIE": (48.1103, 16.5697, "Viyana"),
     "SVO": (55.9726, 37.4146, "Moskova Sheremetyevo"),
     "DME": (55.4086, 37.9061, "Moskova Domodedovo"),
+    "ORD": (41.9742, -87.9073, "Chicago O'Hare"),
+    "MIA": (25.7959, -80.2870, "Miami"),
+    "ATL": (33.6367, -84.4281, "Atlanta"),
+    "BCN": (41.2971, 2.0785, "Barcelona"),
+    "MAD": (40.4983, -3.5676, "Madrid"),
+    "FCO": (41.8003, 12.2389, "Roma Fiumicino"),
+    "LIS": (38.7813, -9.1359, "Lizbon"),
+    "CPT": (-33.9715, 18.6021, "Cape Town"),
+    "NRT": (35.7720, 140.3929, "Tokyo Narita"),
+    "HKG": (22.3080, 113.9185, "Hong Kong"),
+    "SIN": (1.3644, 103.9915, "Singapur"),
 }
 
 # Eski simülasyon koordinatları (geriye uyumluluk): IATA -> (lat, lon)
@@ -57,6 +75,7 @@ _AIRPORTS_UPPER = {k.upper(): v for k, v in POPULAR_AIRPORTS.items()}
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """İki koordinat arası mesafe (km) – Haversine formülü."""
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -64,6 +83,16 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Mesafe (km): geopy varsa geodesic, yoksa Haversine."""
+    if _GEOPY_AVAILABLE:
+        try:
+            return float(_geodesic((lat1, lon1), (lat2, lon2)).kilometers)
+        except Exception:
+            pass
+    return _haversine_km(lat1, lon1, lat2, lon2)
 
 
 def _coords_for_route(origin_iata: str, dest_iata: str) -> tuple[float, float, float, float]:
@@ -124,7 +153,7 @@ class DataFetcher:
 
         olat, olon, origin_name = orig_info
         dlat, dlon, dest_name = dest_info
-        distance_km = _haversine_km(olat, olon, dlat, dlon)
+        distance_km = _distance_km(olat, olon, dlat, dlon)
         route_str = f"{orig_code}-{dest_code}"
 
         return Flight(
@@ -141,20 +170,30 @@ class DataFetcher:
         )
 
     def _fetch_from_api(self, query: str) -> Optional[Flight]:
+        """API çağrıları try-except ile sarılı; timeout/ConnectionError'da çökme yok."""
         if not _FR24_AVAILABLE:
             return None
         try:
-            fr_api = FlightRadar24API()
+            try:
+                fr_api = FlightRadar24API(timeout=15)
+            except TypeError:
+                fr_api = FlightRadar24API()
+        except Exception:
+            return None
+        try:
             zones = fr_api.get_zones()
             zone = zones.get("world") or zones.get("europe") or list(zones.values())[0]
             bounds = fr_api.get_bounds(zone)
             flights = fr_api.get_flights(bounds=bounds)
-            if not flights:
-                return None
+        except (TimeoutError, ConnectionError, OSError, Exception):
+            return None
+        if not flights:
+            return None
 
-            is_route = "-" in query and len(query) >= 6
-            want_orig, want_dest = (query.split("-", 1)[0].strip(), query.split("-", 1)[1].strip()) if is_route else (None, None)
+        is_route = "-" in query and len(query) >= 6
+        want_orig, want_dest = (query.split("-", 1)[0].strip(), query.split("-", 1)[1].strip()) if is_route else (None, None)
 
+        try:
             for fr in flights:
                 callsign = getattr(fr, "callsign", "") or ""
                 number = getattr(fr, "number", "") or ""
@@ -214,7 +253,7 @@ class DataFetcher:
                     dest_lon=float(dlon) if dlon is not None else None,
                 )
             return None
-        except Exception:
+        except (TimeoutError, ConnectionError, OSError, Exception):
             return None
 
     def _fetch_from_fallback(self, query: str) -> Optional[Flight]:

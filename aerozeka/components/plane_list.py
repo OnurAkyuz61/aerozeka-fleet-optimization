@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Uçak listesi: CTkFrame kartlar, koyu arka plan, ideal kart yeşil (#2ecc71)."""
+"""Uçak listesi: CTkFrame kartlar. Resim yoksa gri placeholder (çökme yok)."""
 
 import os
 from typing import List, Optional
@@ -8,21 +8,25 @@ import customtkinter as ctk
 
 from aerozeka.core import AircraftCandidate
 
-try:
-    from PIL import Image, ImageDraw, ImageFont
-    _PIL_AVAILABLE = True
-except ImportError:
-    _PIL_AVAILABLE = False
-
 THUMB_W, THUMB_H = 44, 44
 CARD_CORNER = 10
 IDEAL_FG = "#2ecc71"
 CARD_FG = ("gray28", "gray22")
+# Resim bulunamadığında kullanılacak gri placeholder (assets içinde)
+PLACEHOLDER_FILENAME = "placeholder_plane.png"
 
 
 def _thumbnail_path(assets_dir: str, image_key: str) -> Optional[str]:
     """Varsa resim dosya yolu, yoksa None."""
+    if not image_key:
+        return None
     path = os.path.join(assets_dir, f"{image_key}.png")
+    return path if os.path.isfile(path) else None
+
+
+def _placeholder_plane_path(assets_dir: str) -> Optional[str]:
+    """Gri uçak placeholder resmi; yoksa None."""
+    path = os.path.join(assets_dir, PLACEHOLDER_FILENAME)
     return path if os.path.isfile(path) else None
 
 
@@ -103,16 +107,20 @@ class PlaneList(ctk.CTkFrame):
             card.pack(fill="x", pady=4)
             card.pack_propagate(False)
 
-            # Sol: küçük ikon (dosya varsa CTkImage, yoksa metin)
+            # Sol: uçak resmi veya gri placeholder (resim yoksa/hatada çökme yok)
             thumb_path = _thumbnail_path(self._assets_dir, c.aircraft.image_key or "plane")
+            if not thumb_path:
+                thumb_path = _placeholder_plane_path(self._assets_dir)
+            img_ok = False
             if thumb_path:
                 try:
                     img = ctk.CTkImage(light_image=thumb_path, dark_image=thumb_path, size=(THUMB_W, THUMB_H))
                     self._image_refs.append(img)
                     ctk.CTkLabel(card, text="", image=img).pack(side="left", padx=12, pady=14)
+                    img_ok = True
                 except Exception:
-                    _icon_label(card, c.aircraft.name, text_color).pack(side="left", padx=12, pady=14)
-            else:
+                    pass
+            if not img_ok:
                 _icon_label(card, c.aircraft.name, text_color).pack(side="left", padx=12, pady=14)
 
             # Sağ: isim, kapasite, yakıt

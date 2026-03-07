@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-AeroZeka ana penceresi: CustomTkinter ile koyu tema, yuvarlak frame'ler.
+AeroZeka ana penceresi: CustomTkinter, hata toleranslı (traceback yerine şık mesaj).
 """
 
 import threading
-from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -12,13 +11,36 @@ from aerozeka.core import DataFetcher, Optimizer, DemandPredictor
 from aerozeka.components import SearchBar, MapWidget, FlightInfo, PlaneList
 from aerozeka.assets import ensure_placeholders
 
-# Tema (pencere oluşturulmadan önce)
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+def _show_message(parent: ctk.CTk, title: str, message: str, is_warning: bool = False) -> None:
+    """
+    Sistem pop-up yerine CTk penceresi ile kullanıcı dostu mesaj.
+    Traceback göstermez; başlık ve metin şık bir toplevel'da.
+    """
+    win = ctk.CTkToplevel(parent)
+    win.title(title)
+    win.geometry("420x180")
+    win.transient(parent)
+    win.grab_set()
+    frame = ctk.CTkFrame(win, fg_color=("gray22", "gray17"), corner_radius=12)
+    frame.pack(fill="both", expand=True, padx=20, pady=20)
+    ctk.CTkLabel(
+        frame, text=message,
+        font=ctk.CTkFont(size=13),
+        text_color=("gray90", "gray90"),
+        wraplength=360,
+        justify="left",
+    ).pack(pady=(20, 16), padx=20, anchor="w")
+    btn = ctk.CTkButton(frame, text="Tamam", width=100, command=win.destroy)
+    btn.pack(pady=(0, 20))
+    win.after(100, win.focus_force)
+
+
 class App(ctk.CTk):
-    """Ana uygulama: CTk pencere + bileşen orkestrasyonu."""
+    """Ana uygulama: hata durumunda çökme yok, UI donmaz."""
 
     def __init__(self):
         super().__init__()
@@ -36,11 +58,9 @@ class App(ctk.CTk):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        # Ana container: padding, koyu arka plan
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=24, pady=24)
 
-        # Başlık
         ctk.CTkLabel(
             main, text="AeroZeka",
             font=ctk.CTkFont(family="Helvetica Neue", size=24, weight="bold"),
@@ -78,8 +98,9 @@ class App(ctk.CTk):
         self._plane_list.pack(fill="both", expand=True)
 
     def _on_search(self, query: str) -> None:
-        if not query:
-            messagebox.showinfo("Bilgi", "Lütfen sefer numarası veya rota girin.")
+        # Girdi SearchBar'da temizlendi; boşsa uyarı ver, işlem başlatma
+        if not query or not str(query).strip():
+            _show_message(self, "Bilgi", "Lütfen sefer numarası veya rota girin (örn: TK2828, IST-TZX).")
             return
         if self._searching:
             return
@@ -89,8 +110,11 @@ class App(ctk.CTk):
             self._status_label.configure(text="Aranıyor...")
 
         def run():
-            flight = self._fetcher.fetch(query)
-            self.after(0, lambda: self._on_result(query, flight))
+            try:
+                flight = self._fetcher.fetch(query)
+                self.after(0, lambda: self._on_result(query, flight))
+            except Exception:
+                self.after(0, lambda: self._on_result(query, None))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -100,36 +124,50 @@ class App(ctk.CTk):
         if self._status_label:
             self._status_label.configure(text="")
 
-        if flight is None:
-            messagebox.showwarning("Sonuç yok", f"'{query}' için sefer bulunamadı.")
-            return
+        try:
+            if flight is None:
+                _show_message(
+                    self,
+                    "Sefer bulunamadı",
+                    "Sefer bulunamadı. Lütfen geçerli bir rota girin (örn: IST-TZX, IST-SFO).",
+                    is_warning=True,
+                )
+                return
 
-        # ML yolcu tahmini: model varsa tahminle güncelle
-        predicted = self._demand_predictor.predict(flight.distance_km)
-        if predicted is not None:
-            flight.expected_passengers = max(40, min(350, predicted))
-            flight.ml_predicted = True
+            # ML: model varsa tahmin, yoksa mesafe bazlı fallback (model_kullanildi=False)
+            predicted = self._demand_predictor.predict(flight.distance_km)
+            if predicted is not None:
+                flight.expected_passengers = max(40, min(350, predicted))
+                flight.ml_predicted = True
+            else:
+                flight.expected_passengers = DemandPredictor.estimate_from_distance(flight.distance_km)
+                flight.ml_predicted = False
 
-        self._flight_info.set_flight(flight)
-        if flight.origin_lat is not None and flight.dest_lat is not None:
-            self._map.set_route(
-                flight.origin_lat, flight.origin_lon,
-                flight.dest_lat, flight.dest_lon,
-                origin_label=flight.origin[:20],
-                dest_label=flight.destination[:20],
+            self._flight_info.set_flight(flight)
+            if flight.origin_lat is not None and flight.dest_lat is not None:
+                self._map.set_route(
+                    flight.origin_lat, flight.origin_lon,
+                    flight.dest_lat, flight.dest_lon,
+                    origin_label=(flight.origin or "")[:20],
+                    dest_label=(flight.destination or "")[:20],
+                )
+            else:
+                self._map.clear_route()
+
+            candidates, explanation = self._optimizer.run(flight)
+            if getattr(flight, "ml_predicted", False):
+                pax = flight.expected_passengers
+                ml_intro = f"Yapay zeka modelimiz bu rotadaki mevsimsel verilere dayanarak {pax} yolcu öngörmüştür. "
+                explanation = ml_intro + explanation
+            self._plane_list.set_candidates(candidates, explanation)
+
+        except Exception:
+            _show_message(
+                self,
+                "Hata",
+                "Bir hata oluştu. Lütfen geçerli bir rota (örn: IST-TZX) ile tekrar deneyin.",
+                is_warning=True,
             )
-        else:
-            self._map.clear_route()
-
-        candidates, explanation = self._optimizer.run(flight)
-        # ML kullanıldıysa Zeka Analizi metninde modele vurgu
-        if getattr(flight, "ml_predicted", False):
-            pax = flight.expected_passengers
-            ml_intro = (
-                f"Yapay zeka modelimiz bu rotadaki mevsimsel verilere dayanarak {pax} yolcu öngörmüştür. "
-            )
-            explanation = ml_intro + explanation
-        self._plane_list.set_candidates(candidates, explanation)
 
     def run(self) -> None:
         self.mainloop()

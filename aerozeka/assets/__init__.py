@@ -5,22 +5,27 @@ import os
 
 ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
 PLACEHOLDER_KEYS = ("boeing737", "airbusa320")
+# Uçak resmi yoksa kullanılacak genel gri placeholder
+PLACEHOLDER_PLANE = "placeholder_plane"
 
 
 def ensure_placeholders() -> None:
-    """boeing737.png / airbusa320.png yoksa PIL ile oluşturur; PIL yoksa atlanır."""
+    """Eksik resimleri PIL ile oluşturur: boeing737, airbusa320, placeholder_plane."""
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
         return
-    for key in PLACEHOLDER_KEYS:
+    for key in list(PLACEHOLDER_KEYS) + [PLACEHOLDER_PLANE]:
         path = os.path.join(ASSETS_DIR, f"{key}.png")
         if os.path.isfile(path):
             continue
         try:
-            img = Image.new("RGB", (64, 64), color=(240, 248, 255))
+            img = Image.new("RGB", (64, 64), color=(200, 200, 200) if key == PLACEHOLDER_PLANE else (240, 248, 255))
             d = ImageDraw.Draw(img)
-            text = "B737" if "boeing" in key else "A320"
+            if key == PLACEHOLDER_PLANE:
+                text = "Uçak"
+            else:
+                text = "B737" if "boeing" in key else "A320"
             try:
                 font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
             except Exception:
