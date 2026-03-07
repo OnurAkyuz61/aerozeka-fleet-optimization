@@ -24,8 +24,12 @@ class SearchBar(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
+        # İçerik (Entry + Buton) ortalanmış bir frame içinde; ana ekranda dengeli görünüm
+        inner = ctk.CTkFrame(self, fg_color="transparent")
+        inner.pack(anchor="center", pady=(0, 0))
+
         self.entry = ctk.CTkEntry(
-            self,
+            inner,
             width=320,
             height=40,
             corner_radius=10,
@@ -36,7 +40,7 @@ class SearchBar(ctk.CTkFrame):
         self.entry.bind("<Return>", lambda e: self.trigger_search())
 
         self.btn = ctk.CTkButton(
-            self,
+            inner,
             text="Sefer Ara",
             width=120,
             height=40,

@@ -1,65 +1,59 @@
-# AeroZeka — Filo Atama
+# ✈️ AeroZeka - Yapay Zeka Destekli Filo Atama Optimizasyonu
 
-Havayolu seferleri için uygun uçak atamasını gösteren masaüstü uygulaması. Sefer numarası veya rota ile arama yapılır; kapasitesi yeterli uçaklar listelenir ve en düşük yakıt maliyetli uçak “En İdeal” olarak vurgulanır.
+AeroZeka, havayolu şirketlerinin kârlılığını maksimize etmek için geliştirilmiş, makine öğrenmesi destekli bir **Filo Atama (Fleet Assignment)** masaüstü uygulamasıdır. Kullanıcının girdiği uçuş rotasına göre tahmini yolcu talebini hesaplar ve Türk Hava Yolları (THY) filosu içerisinden en uygun uçağı (kapasite, menzil ve yakıt tüketimi parametreleriyle) o sefere atar.
 
-## Özellikler
+## 🚀 Öne Çıkan Özellikler
 
-- **Arama:** Sefer numarası (örn. `TK2828`) veya rota (örn. `IST-TZX`) ile arama
-- **Sefer kartı:** Rota, mesafe ve beklenen yolcu sayısı
-- **Uygun uçaklar:** Sadece kapasitesi yeten uçakların listesi (tablo)
-- **En ideal seçim:** En az yakıt tüketen uçağın yeşil vurgulanması
-- **Neden İdeal?:** Sistemin karar gerekçesini açıklayan metin
+* **🤖 Makine Öğrenmesi ile Talep Tahmini:** Basit rastgele atamalar yerine, uçuş mesafesi ve mevsimsel verilere dayalı olarak `RandomForestRegressor` modeli ile uçuşun tahmini yolcu sayısını öngörür.
+* **🌍 Dinamik Harita ve Rota Çizimi:** `tkintermapview` entegrasyonu ile kalkış ve varış noktalarını harita üzerinde pinler, kıtalararası uçuşların rotasını çizer ve otomatik odaklanma yapar.
+* **🛡️ Fallback (Yedek) Mekanizması:** API o anki canlı uçuşu bulamasa bile, dahili havalimanı koordinat sözlüğü ve `geopy` sayesinde mesafeyi kendisi hesaplar, sistemin çökmesini engeller (Bulletproof Architecture).
+* **✈️ Gerçekçi Filo ve Menzil Kontrolü:** Airbus A350, Boeing 787 Dreamliner gibi geniş gövdeli uçakları içeren THY filo verisiyle çalışır. Uçakları sadece kapasiteye göre değil, maksimum uçuş menziline (Range) göre de filtreler.
+* **🎨 Modern UI/UX:** `customtkinter` ile geliştirilmiş; koyu tema (Dark Mode) destekli, akıcı, modüler ve kullanıcı dostu arayüz.
 
-## Gereksinimler
+## 🛠️ Kullanılan Teknolojiler
 
-- Python 3.8+
-- Tkinter (Python ile birlikte gelir; Linux’ta `python3-tk` gerekebilir)
+* **Dil:** Python 3.x
+* **Arayüz (GUI):** CustomTkinter, tkintermapview, Pillow (PIL)
+* **Makine Öğrenmesi:** Scikit-Learn, Pandas, NumPy, Joblib
+* **Veri ve Haritalama:** FlightRadarAPI (Uçuş Verisi), Geopy (Mesafe Hesaplama)
 
-## Kurulum
+## ⚙️ Kurulum ve Çalıştırma
 
-```bash
-git clone https://github.com/onurakyuz61/aerozeka-fleet-optimization.git
-cd aerozeka-fleet-optimization
-```
+Projeyi yerel bilgisayarınızda çalıştırmak için aşağıdaki adımları izleyin:
 
-Ek Python paketi gerekmez; proje yalnızca standart kütüphane ve Tkinter kullanır.
+1. **Repoyu Klonlayın:**
+   ```bash
+   git clone https://github.com/onurakyuz61/aerozeka-fleet-optimization.git
+   cd aerozeka-fleet-optimization
+   ```
 
-## Çalıştırma
+2. **Gerekli Kütüphaneleri Yükleyin:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Proje kökünden:
+3. **(Opsiyonel) Makine Öğrenmesi Modelini Eğitin:**  
+   Eğer `demand_model.pkl` dosyası mevcut değilse, önce modeli eğitmeniz gerekir:
+   ```bash
+   python ml/train_demand_model.py
+   ```
 
-```bash
-python main.py
-```
+4. **Uygulamayı Başlatın:**
+   ```bash
+   python main.py
+   ```
 
-veya paket olarak:
+## 💡 Nasıl Çalışır? (Optimizasyon Algoritması)
 
-```bash
-python -m aerozeka
-```
+Kullanıcı bir rota (Örn: IST-JFK) girdiğinde sistem şu adımları izler:
 
-## Proje yapısı
+1. Rota koordinatlarını ve mesafesini bulur (~8047 km).
+2. ML modeli bu mesafedeki bir uçuş için beklenen yolcu sayısını tahmin eder (Örn: 175 yolcu).
+3. Algoritma menzili 8047 km'den kısa olan dar gövdeli uçakları (örn: A320) eler.
+4. Kalan geniş gövdeli uçaklar (örn: A350, B787) arasından, tahmin edilen 175 yolcuyu karşılayacak kapasitede olup en düşük yakıt tüketimine sahip olanı **"En Karlı Seçim"** olarak belirler.
 
-```
-aerozeka-fleet-optimization/
-├── main.py              # Giriş noktası
-├── requirements.txt     # Bağımlılıklar (yok; stdlib)
-├── README.md
-├── LICENSE
-├── .gitignore
-└── aerozeka/            # Ana paket
-    ├── __init__.py
-    ├── __main__.py      # python -m aerozeka giriş noktası
-    ├── data.py          # Sefer ve uçak verileri
-    ├── optimization.py  # Kapasite filtresi, ideal uçak seçimi
-    └── ui.py            # Tkinter/ttk arayüzü
-```
+---
 
-## Örnek veriler
+**Geliştirici:** Onur Akyüz  
 
-- **Seferler:** TK2828 (IST-TZX), TK2424 (IST-ADB), TK2162 (IST-ESB), TK4002 (IST-AYT), TK2840 (IST-GZT)
-- **Uçaklar:** Boeing 737-700/800/900, Airbus A319/A320neo/A321, Embraer E195
-
-## Lisans
-
-MIT License — ayrıntılar için `LICENSE` dosyasına bakın.
+Bu proje, modern yazılım mimarisi, makine öğrenmesi ve UI/UX prensipleri kullanılarak geliştirilmiştir.

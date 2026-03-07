@@ -58,4 +58,7 @@ class FlightInfo(ctk.CTkFrame):
         if getattr(flight, "ml_predicted", False):
             pax_text += "  (ML Tahmini)"
         self._labels["passengers"].configure(text=pax_text)
-        self._labels["duration"].configure(text=f"Tahmini uçuş süresi: {flight.duration_minutes} dk")
+        dk = flight.duration_minutes
+        saat, kalan_dk = dk // 60, dk % 60
+        duration_text = f"{saat} saat {kalan_dk} dk" if saat else f"{kalan_dk} dk"
+        self._labels["duration"].configure(text=f"Tahmini uçuş süresi: {duration_text}")

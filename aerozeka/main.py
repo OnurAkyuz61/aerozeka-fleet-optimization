@@ -97,6 +97,19 @@ class App(ctk.CTk):
         self._plane_list = PlaneList(right)
         self._plane_list.pack(fill="both", expand=True)
 
+        # Footer: ortalanmış, küçük ve soluk font
+        footer_text = (
+            "Powered by Onur Akyüz | Versiyon 1.0.0 | "
+            "Veri: FlightRadarAPI & THY Filosu | Makine Öğrenmesi (RandomForest)"
+        )
+        self._footer = ctk.CTkLabel(
+            main,
+            text=footer_text,
+            font=ctk.CTkFont(size=11),
+            text_color=("gray50", "gray45"),
+        )
+        self._footer.pack(side="bottom", pady=(16, 0))
+
     def _on_search(self, query: str) -> None:
         # Girdi SearchBar'da temizlendi; boşsa uyarı ver, işlem başlatma
         if not query or not str(query).strip():

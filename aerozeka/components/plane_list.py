@@ -66,15 +66,23 @@ class PlaneList(ctk.CTkFrame):
         self._scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self._scroll.pack(fill="both", expand=True, padx=12, pady=(0, 8))
 
-        self._explanation_label = ctk.CTkLabel(
+        # "Neden Seçildi?" analiz metni: koyu, yuvarlak hatlı frame içinde; paragraf okunabilirliği
+        self._explanation_frame = ctk.CTkFrame(
             self,
+            fg_color=("gray22", "gray17"),
+            corner_radius=12,
+        )
+        self._explanation_frame.pack(fill="x", padx=12, pady=(8, 12))
+        self._explanation_label = ctk.CTkLabel(
+            self._explanation_frame,
             text="",
             font=ctk.CTkFont(size=12),
-            text_color=("gray70", "gray70"),
-            wraplength=340,
+            text_color=("gray82", "gray82"),
+            wraplength=320,
             justify="left",
+            anchor="w",
         )
-        self._explanation_label.pack(anchor="w", padx=16, pady=(8, 16))
+        self._explanation_label.pack(anchor="w", padx=16, pady=14)
 
     def set_candidates(self, candidates: List[AircraftCandidate], explanation: str = "") -> None:
         if self._scroll is None:
@@ -91,6 +99,8 @@ class PlaneList(ctk.CTkFrame):
             ).pack(anchor="w", pady=8)
             if self._explanation_label:
                 self._explanation_label.configure(text="")
+            if getattr(self, "_explanation_frame", None):
+                self._explanation_frame.pack_forget()
             return
 
         for c in candidates:
@@ -135,9 +145,13 @@ class PlaneList(ctk.CTkFrame):
             ctk.CTkLabel(right, text=line2, font=font_sub, text_color=text_color).pack(anchor="w")
 
         if self._explanation_label:
-            self._explanation_label.configure(
-                text=f"Neden Seçildi? {explanation}" if explanation else ""
-            )
+            text = f"Neden Seçildi?\n\n{explanation}" if explanation else ""
+            self._explanation_label.configure(text=text)
+        if getattr(self, "_explanation_frame", None):
+            if explanation:
+                self._explanation_frame.pack(fill="x", padx=12, pady=(8, 12))
+            else:
+                self._explanation_frame.pack_forget()
 
 
 def _icon_label(parent: ctk.CTkFrame, name: str, text_color: str) -> ctk.CTkLabel:
