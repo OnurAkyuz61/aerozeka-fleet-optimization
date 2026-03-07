@@ -67,7 +67,7 @@ class App(ctk.CTk):
             text_color=("gray90", "gray90"),
         ).pack(pady=(0, 4))
         ctk.CTkLabel(
-            main, text="Sefer numarası veya rota girin (örn: TK2828, IST-TZX)",
+            main, text="Uçuş numarası veya güzergah seçerek arama yapın",
             font=ctk.CTkFont(size=13),
             text_color=("gray70", "gray70"),
         ).pack(pady=(0, 16))
