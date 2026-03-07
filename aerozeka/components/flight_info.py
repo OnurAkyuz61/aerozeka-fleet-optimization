@@ -54,5 +54,8 @@ class FlightInfo(ctk.CTkFrame):
             return
         self._labels["route"].configure(text=f"Rota: {flight.route} ({flight.origin} → {flight.destination})")
         self._labels["distance"].configure(text=f"Mesafe: {int(flight.distance_km)} km")
-        self._labels["passengers"].configure(text=f"Tahmini yolcu: {flight.expected_passengers}")
+        pax_text = f"Tahmini yolcu: {flight.expected_passengers}"
+        if getattr(flight, "ml_predicted", False):
+            pax_text += "  (ML Tahmini)"
+        self._labels["passengers"].configure(text=pax_text)
         self._labels["duration"].configure(text=f"Tahmini uçuş süresi: {flight.duration_minutes} dk")

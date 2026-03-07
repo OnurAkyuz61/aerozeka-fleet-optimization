@@ -19,6 +19,8 @@ class Flight:
     origin_lon: Optional[float] = None
     dest_lat: Optional[float] = None
     dest_lon: Optional[float] = None
+    # ML yolcu tahmini kullanıldıysa True (UI'da "ML Tahmini" gösterilir)
+    ml_predicted: bool = False
 
     @property
     def duration_minutes(self) -> int:

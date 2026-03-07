@@ -8,7 +8,7 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from aerozeka.core import DataFetcher, Optimizer
+from aerozeka.core import DataFetcher, Optimizer, DemandPredictor
 from aerozeka.components import SearchBar, MapWidget, FlightInfo, PlaneList
 from aerozeka.assets import ensure_placeholders
 
@@ -29,6 +29,7 @@ class App(ctk.CTk):
 
         self._fetcher = DataFetcher()
         self._optimizer = Optimizer()
+        self._demand_predictor = DemandPredictor()
         self._searching = False
         self._status_label: ctk.CTkLabel | None = None
 
@@ -103,6 +104,12 @@ class App(ctk.CTk):
             messagebox.showwarning("Sonuç yok", f"'{query}' için sefer bulunamadı.")
             return
 
+        # ML yolcu tahmini: model varsa tahminle güncelle
+        predicted = self._demand_predictor.predict(flight.distance_km)
+        if predicted is not None:
+            flight.expected_passengers = max(40, min(350, predicted))
+            flight.ml_predicted = True
+
         self._flight_info.set_flight(flight)
         if flight.origin_lat is not None and flight.dest_lat is not None:
             self._map.set_route(
@@ -115,6 +122,13 @@ class App(ctk.CTk):
             self._map.clear_route()
 
         candidates, explanation = self._optimizer.run(flight)
+        # ML kullanıldıysa Zeka Analizi metninde modele vurgu
+        if getattr(flight, "ml_predicted", False):
+            pax = flight.expected_passengers
+            ml_intro = (
+                f"Yapay zeka modelimiz bu rotadaki mevsimsel verilere dayanarak {pax} yolcu öngörmüştür. "
+            )
+            explanation = ml_intro + explanation
         self._plane_list.set_candidates(candidates, explanation)
 
     def run(self) -> None:
