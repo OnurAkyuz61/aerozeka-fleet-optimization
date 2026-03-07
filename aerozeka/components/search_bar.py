@@ -179,8 +179,7 @@ class SearchBar(ctk.CTkFrame):
         self._dropdown_origin = ctk.CTkScrollableFrame(
             left_col, fg_color=("gray22", "gray18"), height=_AUTOCOMPLETE_DROPDOWN_HEIGHT, width=200
         )
-        self._dropdown_origin.pack(anchor="w", pady=(2, 0))
-        self._dropdown_origin.pack_forget()
+        # Place ile overlay; başlangıçta gizli (layout’u bozmaz)
 
         # --- Varış (Entry + yüzen liste) ---
         right_col = ctk.CTkFrame(self._route_frame, fg_color="transparent")
@@ -203,8 +202,7 @@ class SearchBar(ctk.CTkFrame):
         self._dropdown_dest = ctk.CTkScrollableFrame(
             right_col, fg_color=("gray22", "gray18"), height=_AUTOCOMPLETE_DROPDOWN_HEIGHT, width=200
         )
-        self._dropdown_dest.pack(anchor="w", pady=(2, 0))
-        self._dropdown_dest.pack_forget()
+        # Place ile overlay; başlangıçta gizli (layout’u bozmaz)
 
     def _filter_airports_by_query(self, query: str) -> List[str]:
         """Ana listeden yazılan metne göre eşleşenleri döndürür (içinde geçiyor, büyük/küçük harf duyarsız)."""
@@ -222,12 +220,20 @@ class SearchBar(ctk.CTkFrame):
         return self._entry_origin if which == "origin" else self._entry_dest
 
     def _hide_dropdown(self, which: str) -> None:
-        """Yüzen listeyi gizler."""
-        self._dropdown_for(which).pack_forget()
+        """Yüzen listeyi gizler (place_forget; layout hiç oynamaz)."""
+        self._dropdown_for(which).place_forget()
 
     def _show_dropdown(self, which: str) -> None:
-        """Yüzen listeyi görünür yapar."""
-        self._dropdown_for(which).pack(anchor="w", pady=(2, 0))
+        """Yüzen listeyi entry'nin hemen altında place ile overlay olarak gösterir; lift ile en öne alır."""
+        entry = self._entry_for(which)
+        dropdown = self._dropdown_for(which)
+        if entry.master:
+            entry.master.update_idletasks()
+        x = entry.winfo_x()
+        y = entry.winfo_y() + entry.winfo_height() + 2
+        w = max(entry.winfo_width(), 200)
+        dropdown.place(x=x, y=y, width=w, height=_AUTOCOMPLETE_DROPDOWN_HEIGHT)
+        dropdown.lift()
 
     def _populate_dropdown(self, which: str, matches: List[str]) -> None:
         """Dropdown içeriğini temizleyip eşleşen her havalimanı için tıklanabilir buton ekler."""
