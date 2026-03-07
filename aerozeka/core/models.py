@@ -38,6 +38,7 @@ class Aircraft:
     capacity: int
     fuel_per_km: float
     image_key: str = ""  # assets eşlemesi: boeing737, airbusa320 vb.
+    menzil_km: int = 0   # Maksimum uçuş menzili (km); 0 = kontrol yapılmaz (geriye uyumluluk)
 
 
 @dataclass

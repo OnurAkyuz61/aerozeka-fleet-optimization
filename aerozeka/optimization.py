@@ -20,16 +20,20 @@ class AircraftCandidate:
 
 def get_suitable_aircraft(flight: Flight) -> List[AircraftCandidate]:
     """
-    Seferin beklenen yolcu sayısını karşılayabilen uçakları döndürür.
-    Toplam yakıt (litre) hesaplanır; en düşük yakıt tüketen 'En İdeal Uçak' olarak işaretlenir.
+    Kapasitesi ve menzili yeten uçakları döndürür.
+    Menzil: uçağın menzil_km değeri sefer mesafesine eşit veya büyük olmalıdır.
+    En düşük yakıt tüketen 'En İdeal Uçak' olarak işaretlenir.
     """
     all_planes = get_all_aircraft()
     suitable: List[AircraftCandidate] = []
+    distance_km = flight.distance_km
 
     for ac in all_planes:
         if ac.capacity < flight.expected_passengers:
             continue
-        total_fuel = flight.distance_km * ac.fuel_per_km
+        if ac.menzil_km > 0 and ac.menzil_km < distance_km:
+            continue
+        total_fuel = distance_km * ac.fuel_per_km
         suitable.append(AircraftCandidate(aircraft=ac, total_fuel_liters=total_fuel, is_ideal=False))
 
     if not suitable:

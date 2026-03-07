@@ -35,6 +35,7 @@ class Aircraft:
     manufacturer: str   # Boeing / Airbus
     capacity: int       # Yolcu kapasitesi
     fuel_per_km: float  # km başına yakıt tüketimi (litre)
+    menzil_km: int = 0  # Maksimum uçuş menzili (km); 0 = kontrol yapılmaz
 
 
 # --- Uçak tipi (ICAO) -> tahmini yolcu kapasitesi (simülasyon) ---
@@ -184,15 +185,20 @@ FLIGHTS: List[Flight] = [
     Flight(flight_number="TK2840", route="IST-GZT", origin="İstanbul", destination="Gaziantep", distance_km=1050.0, expected_passengers=110),
 ]
 
-# --- Filo (Boeing / Airbus) ---
+# --- Filo (dar + geniş gövde); menzil_km kıtalararası filtre için ---
 AIRCRAFT: List[Aircraft] = [
-    Aircraft(name="Boeing 737-800", manufacturer="Boeing", capacity=189, fuel_per_km=3.2),
-    Aircraft(name="Boeing 737-700", manufacturer="Boeing", capacity=148, fuel_per_km=2.8),
-    Aircraft(name="Airbus A320neo", manufacturer="Airbus", capacity=180, fuel_per_km=2.6),
-    Aircraft(name="Airbus A321", manufacturer="Airbus", capacity=220, fuel_per_km=3.5),
-    Aircraft(name="Airbus A319", manufacturer="Airbus", capacity=156, fuel_per_km=2.5),
-    Aircraft(name="Boeing 737-900", manufacturer="Boeing", capacity=220, fuel_per_km=3.6),
-    Aircraft(name="Embraer E195", manufacturer="Embraer", capacity=124, fuel_per_km=2.2),
+    # Dar gövde (kısa/orta menzil)
+    Aircraft(name="Boeing 737-800", manufacturer="Boeing", capacity=189, fuel_per_km=3.2, menzil_km=5765),
+    Aircraft(name="Boeing 737-700", manufacturer="Boeing", capacity=148, fuel_per_km=2.8, menzil_km=6230),
+    Aircraft(name="Airbus A320neo", manufacturer="Airbus", capacity=180, fuel_per_km=2.6, menzil_km=6500),
+    Aircraft(name="Airbus A321", manufacturer="Airbus", capacity=220, fuel_per_km=3.5, menzil_km=5950),
+    Aircraft(name="Airbus A319", manufacturer="Airbus", capacity=156, fuel_per_km=2.5, menzil_km=6850),
+    Aircraft(name="Boeing 737-900", manufacturer="Boeing", capacity=220, fuel_per_km=3.6, menzil_km=5925),
+    Aircraft(name="Embraer E195", manufacturer="Embraer", capacity=124, fuel_per_km=2.2, menzil_km=4260),
+    # Geniş gövde (kıtalararası, 12.000+ km)
+    Aircraft(name="Boeing 777-300ER", manufacturer="Boeing", capacity=396, fuel_per_km=6.8, menzil_km=13650),
+    Aircraft(name="Airbus A350-900", manufacturer="Airbus", capacity=366, fuel_per_km=5.9, menzil_km=15000),
+    Aircraft(name="Boeing 787-9 Dreamliner", manufacturer="Boeing", capacity=296, fuel_per_km=5.2, menzil_km=14140),
 ]
 
 
