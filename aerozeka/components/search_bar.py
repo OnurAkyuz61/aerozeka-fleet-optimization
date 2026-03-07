@@ -2,7 +2,7 @@
 """
 Havayolu tarzı dinamik arama: Uçuş Numarası / Güzergah seçimi,
 TK prefix’li uçuş no veya kalkış/varış combobox ile backend’e TK2828 / IST-JFK gönderir.
-Güzergah combobox'ları yazdıkça eşleşenleri filtreleyen autocomplete destekler.
+Güzergah: CTkEntry + yüzen CTkScrollableFrame ile gerçek autocomplete (yazdıkça liste, tıklayınca seçim).
 """
 
 import re
@@ -40,11 +40,15 @@ def normalize_query(raw: str) -> str:
     return raw.strip().upper().replace(" ", "")
 
 
+# Autocomplete dropdown yüksekliği
+_AUTOCOMPLETE_DROPDOWN_HEIGHT = 120
+
+
 class SearchBar(ctk.CTkFrame):
     """
     Dinamik arama: Radyo ile 'Uçuş Numarası' veya 'Güzergah' seçilir.
     - Uçuş Numarası: TK + rakam girişi -> backend'e TK2828
-    - Güzergah: İki CTkComboBox (Kalkış/Varış) -> backend'e IST-JFK
+    - Güzergah: İki CTkEntry + yüzen liste (autocomplete) -> backend'e IST-JFK
     """
 
     def __init__(self, parent: ctk.CTk, on_search: Optional[Callable[[str], None]] = None, **kwargs):
@@ -152,45 +156,55 @@ class SearchBar(ctk.CTkFrame):
             self._flight_entry.insert(0, digits)
 
     def _build_route_form(self) -> None:
-        """Güzergah: Kalkış ve Varış CTkComboBox yan yana; yazdıkça filtreleyen autocomplete."""
+        """Güzergah: Kalkış ve Varış CTkEntry + yüzen CTkScrollableFrame (autocomplete)."""
         self._route_frame = ctk.CTkFrame(self._form_container, fg_color="transparent")
+        # --- Kalkış (Entry + yüzen liste) ---
         left_col = ctk.CTkFrame(self._route_frame, fg_color="transparent")
         left_col.pack(side="left", padx=(0, 16))
         ctk.CTkLabel(
             left_col, text="Kalkış", font=ctk.CTkFont(size=12), text_color=("gray70", "gray65")
         ).pack(anchor="w", pady=(0, 4))
-        self._combo_origin = ctk.CTkComboBox(
+        self._entry_origin = ctk.CTkEntry(
             left_col,
-            values=self._airport_master_list,
             width=200,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(size=13),
-            dropdown_font=ctk.CTkFont(size=13),
+            placeholder_text="Örn: IST veya İstanbul",
         )
-        self._combo_origin.pack(anchor="w")
-        if self._airport_master_list:
-            self._combo_origin.set(self._airport_master_list[0])
-        self._combo_origin.bind("<KeyRelease>", lambda e: self._on_airport_combo_key(self._combo_origin, e))
+        self._entry_origin.pack(anchor="w")
+        self._entry_origin.bind("<KeyRelease>", lambda e: self._on_autocomplete_key("origin", e))
+        self._entry_origin.bind("<Return>", lambda e: self.trigger_search())
+        self._entry_origin.bind("<FocusOut>", lambda e: self._schedule_maybe_close_dropdown("origin"))
+        self._dropdown_origin = ctk.CTkScrollableFrame(
+            left_col, fg_color=("gray22", "gray18"), height=_AUTOCOMPLETE_DROPDOWN_HEIGHT, width=200
+        )
+        self._dropdown_origin.pack(anchor="w", pady=(2, 0))
+        self._dropdown_origin.pack_forget()
+
+        # --- Varış (Entry + yüzen liste) ---
         right_col = ctk.CTkFrame(self._route_frame, fg_color="transparent")
         right_col.pack(side="left")
         ctk.CTkLabel(
             right_col, text="Varış", font=ctk.CTkFont(size=12), text_color=("gray70", "gray65")
         ).pack(anchor="w", pady=(0, 4))
-        self._combo_dest = ctk.CTkComboBox(
+        self._entry_dest = ctk.CTkEntry(
             right_col,
-            values=self._airport_master_list,
             width=200,
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(size=13),
-            dropdown_font=ctk.CTkFont(size=13),
+            placeholder_text="Örn: JFK veya New York",
         )
-        self._combo_dest.pack(anchor="w")
-        if len(self._airport_master_list) > 1:
-            self._combo_dest.set(self._airport_master_list[1])
-        self._combo_dest.bind("<KeyRelease>", lambda e: self._on_airport_combo_key(self._combo_dest, e))
-        self._combo_dest.bind("<Return>", lambda e: self.trigger_search())
+        self._entry_dest.pack(anchor="w")
+        self._entry_dest.bind("<KeyRelease>", lambda e: self._on_autocomplete_key("dest", e))
+        self._entry_dest.bind("<Return>", lambda e: self.trigger_search())
+        self._entry_dest.bind("<FocusOut>", lambda e: self._schedule_maybe_close_dropdown("dest"))
+        self._dropdown_dest = ctk.CTkScrollableFrame(
+            right_col, fg_color=("gray22", "gray18"), height=_AUTOCOMPLETE_DROPDOWN_HEIGHT, width=200
+        )
+        self._dropdown_dest.pack(anchor="w", pady=(2, 0))
+        self._dropdown_dest.pack_forget()
 
     def _filter_airports_by_query(self, query: str) -> List[str]:
         """Ana listeden yazılan metne göre eşleşenleri döndürür (içinde geçiyor, büyük/küçük harf duyarsız)."""
@@ -199,25 +213,89 @@ class SearchBar(ctk.CTkFrame):
         q = query.strip().lower()
         return [s for s in self._airport_master_list if q in s.lower()]
 
-    def _on_airport_combo_key(self, combo: ctk.CTkComboBox, event) -> None:
-        """Klavye bırakıldığında combobox değerlerini yazılan metne göre filtreler; dropdown açmayı dener."""
-        try:
-            current = combo.get() or ""
-            filtered = self._filter_airports_by_query(current)
-            combo.configure(values=filtered)
-            self._try_open_dropdown(combo)
-        except Exception:
-            pass
+    def _dropdown_for(self, which: str):
+        """'origin' veya 'dest' için ilgili dropdown frame."""
+        return self._dropdown_origin if which == "origin" else self._dropdown_dest
 
-    def _try_open_dropdown(self, combo: ctk.CTkComboBox) -> None:
-        """Açılır menüyü göstermek için güvenli tetikleyici (CTk sürümüne göre farklılık gösterebilir)."""
-        def _do():
+    def _entry_for(self, which: str):
+        """'origin' veya 'dest' için ilgili entry."""
+        return self._entry_origin if which == "origin" else self._entry_dest
+
+    def _hide_dropdown(self, which: str) -> None:
+        """Yüzen listeyi gizler."""
+        self._dropdown_for(which).pack_forget()
+
+    def _show_dropdown(self, which: str) -> None:
+        """Yüzen listeyi görünür yapar."""
+        self._dropdown_for(which).pack(anchor="w", pady=(2, 0))
+
+    def _populate_dropdown(self, which: str, matches: List[str]) -> None:
+        """Dropdown içeriğini temizleyip eşleşen her havalimanı için tıklanabilir buton ekler."""
+        frame = self._dropdown_for(which)
+        for w in frame.winfo_children():
+            w.destroy()
+        for text in matches:
+            btn = ctk.CTkButton(
+                frame,
+                text=text,
+                font=ctk.CTkFont(size=12),
+                fg_color="transparent",
+                text_color=("gray90", "gray90"),
+                hover_color=("gray35", "gray30"),
+                anchor="w",
+                height=32,
+                corner_radius=6,
+                command=(lambda t: (lambda: self._on_autocomplete_select(which, t)))(text),
+            )
+            btn.pack(fill="x", pady=1, padx=4)
+
+    def _on_autocomplete_select(self, which: str, display_text: str) -> None:
+        """Kullanıcı listeden bir havalimanı seçti: entry'yi güncelle, listeyi kapat."""
+        entry = self._entry_for(which)
+        entry.delete(0, "end")
+        entry.insert(0, display_text)
+        self._hide_dropdown(which)
+        entry.focus_set()
+
+    def _on_autocomplete_key(self, which: str, event) -> None:
+        """KeyRelease: 2+ karakterde eşleşen varsa listeyi göster ve doldur; yoksa veya <2 karakterde gizle."""
+        try:
+            entry = self._entry_for(which)
+            text = (entry.get() or "").strip()
+            if len(text) < 2:
+                self._hide_dropdown(which)
+                return
+            matches = self._filter_airports_by_query(text)
+            if not matches:
+                self._hide_dropdown(which)
+                return
+            self._populate_dropdown(which, matches)
+            self._show_dropdown(which)
+        except Exception:
+            self._hide_dropdown(which)
+
+    def _schedule_maybe_close_dropdown(self, which: str) -> None:
+        """FocusOut sonrası kısa gecikmeyle listeyi kapat (odak dropdown dışındaysa)."""
+        def maybe_close():
             try:
-                combo.focus_set()
-                combo.event_generate("<Down>")
+                root = self.winfo_toplevel()
+                w = root.focus_get() if hasattr(root, "focus_get") else None
+                dropdown = self._dropdown_for(which)
+                entry = self._entry_for(which)
+                if w is None:
+                    self._hide_dropdown(which)
+                    return
+                # Odak bu dropdown veya içindeki bir widget üzerinde mi?
+                p = w
+                while p:
+                    if p == dropdown:
+                        return
+                    p = getattr(p, "master", None)
+                if w != entry:
+                    self._hide_dropdown(which)
             except Exception:
                 pass
-        self.after(50, _do)
+        self.after(150, maybe_close)
 
     def _on_mode_change(self) -> None:
         """Radyo değişince form alanını göster/gizle; varsayılan Güzergah."""
@@ -231,7 +309,7 @@ class SearchBar(ctk.CTkFrame):
             self._flight_frame.pack_forget()
             self._route_frame.pack()
             try:
-                self._combo_origin.focus_set()
+                self._entry_origin.focus_set()
             except Exception:
                 pass
 
@@ -242,8 +320,8 @@ class SearchBar(ctk.CTkFrame):
 
     def _get_query_route(self) -> str:
         """Güzergah modu: ORIG-DEST (IATA 3 harf)."""
-        o = _iata_from_display(self._combo_origin.get())
-        d = _iata_from_display(self._combo_dest.get())
+        o = _iata_from_display(self._entry_origin.get())
+        d = _iata_from_display(self._entry_dest.get())
         if not o or not d:
             return ""
         return f"{o}-{d}"
@@ -265,7 +343,7 @@ class SearchBar(ctk.CTkFrame):
     def set_busy(self, busy: bool) -> None:
         state = "disabled" if busy else "normal"
         self._flight_entry.configure(state=state)
-        self._combo_origin.configure(state=state)
-        self._combo_dest.configure(state=state)
+        self._entry_origin.configure(state=state)
+        self._entry_dest.configure(state=state)
         if self._btn:
             self._btn.configure(state=state)
