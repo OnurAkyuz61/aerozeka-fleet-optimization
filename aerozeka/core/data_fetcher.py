@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 FlightRadar24 API ile uçuş/rota verisi (koordinatlarla) çeker.
-API eksik veya hata verirse koordinat simülasyonu ile güvenli fallback.
+API veri bulamazsa: yerel liste, ardından rota fallback (popüler havalimanları + Haversine).
 """
 
 import math
@@ -23,12 +23,37 @@ _AIRCRAFT_CAPACITY = {
 _DEFAULT_KM = 800.0
 _DEFAULT_PAX = 150
 
-# Harita fallback: IATA -> (lat, lon)
-_SIMULATED_COORDS = {
-    "IST": (41.27, 28.75), "TZX": (41.00, 39.80), "ADB": (38.29, 27.15),
-    "ESB": (40.12, 32.99), "AYT": (36.90, 30.80), "GZT": (36.95, 37.48),
-    "SAW": (40.90, 29.31), "ADA": (36.98, 35.30), "VAN": (38.47, 43.33),
+# Popüler havalimanları: IATA -> (enlem, boylam, isim)
+# Rota fallback için; sözlükte yoksa "Sefer bulunamadı" gösterilir
+POPULAR_AIRPORTS: dict[str, tuple[float, float, str]] = {
+    "IST": (41.2753, 28.7519, "İstanbul"),
+    "SAW": (40.8986, 29.3092, "İstanbul Sabiha Gökçen"),
+    "TZX": (41.0027, 39.7892, "Trabzon"),
+    "ADB": (38.2924, 27.1569, "İzmir"),
+    "ESB": (40.1281, 32.9951, "Ankara Esenboğa"),
+    "AYT": (36.8987, 30.8005, "Antalya"),
+    "GZT": (36.9472, 37.4789, "Gaziantep"),
+    "ADA": (36.9822, 35.2804, "Adana"),
+    "VAN": (38.4682, 43.3322, "Van"),
+    "SFO": (37.6189, -122.3750, "San Francisco"),
+    "JFK": (40.6398, -73.7787, "New York JFK"),
+    "LAX": (33.9425, -118.4081, "Los Angeles"),
+    "LHR": (51.4700, -0.4543, "Londra Heathrow"),
+    "CDG": (49.0097, 2.5478, "Paris Charles de Gaulle"),
+    "FRA": (50.0379, 8.5622, "Frankfurt"),
+    "AMS": (52.3105, 4.7683, "Amsterdam"),
+    "DXB": (25.2532, 55.3657, "Dubai"),
+    "MUC": (48.3538, 11.7750, "Münih"),
+    "ZRH": (47.4647, 8.5492, "Zürih"),
+    "VIE": (48.1103, 16.5697, "Viyana"),
+    "SVO": (55.9726, 37.4146, "Moskova Sheremetyevo"),
+    "DME": (55.4086, 37.9061, "Moskova Domodedovo"),
 }
+
+# Eski simülasyon koordinatları (geriye uyumluluk): IATA -> (lat, lon)
+_SIMULATED_COORDS = {k.upper(): (v[0], v[1]) for k, v in POPULAR_AIRPORTS.items()}
+# Rota fallback için büyük harf anahtarlı sözlük
+_AIRPORTS_UPPER = {k.upper(): v for k, v in POPULAR_AIRPORTS.items()}
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -42,12 +67,11 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _coords_for_route(origin_iata: str, dest_iata: str) -> tuple[float, float, float, float]:
-    """Rota için kalkış/varış koordinatları (simülasyon)."""
+    """Rota için kalkış/varış koordinatları (popüler havalimanları sözlüğünden)."""
     o = _SIMULATED_COORDS.get((origin_iata or "").upper().strip())
     d = _SIMULATED_COORDS.get((dest_iata or "").upper().strip())
     if o and d:
         return o[0], o[1], d[0], d[1]
-    # Varsayılan: Türkiye merkezi civarı
     return 39.5, 32.5, 40.5, 34.0
 
 
@@ -56,8 +80,9 @@ class DataFetcher:
 
     def fetch(self, query: str) -> Optional[Flight]:
         """
-        Sefer numarası (TK2828) veya rota (IST-TZX) ile uçuş döndürür.
-        Koordinatlar API'den veya simülasyondan gelir; harita her zaman çalışır.
+        Sefer numarası (TK2828) veya rota (IST-SFO) ile uçuş döndürür.
+        Sıra: API -> yerel liste -> rota fallback (popüler havalimanları + Haversine).
+        Sadece sözlükte olmayan rota/veri girilirse None (Sefer bulunamadı).
         """
         q = query.strip().upper().replace(" ", "")
         if not q:
@@ -66,9 +91,54 @@ class DataFetcher:
         flight = self._fetch_from_api(q)
         if flight is None:
             flight = self._fetch_from_fallback(q)
+        if flight is None and self._is_route_format(q):
+            flight = self._fetch_from_route_fallback(q)
         if flight is not None and (flight.origin_lat is None or flight.dest_lat is None):
             flight = self._ensure_coords(flight)
         return flight
+
+    @staticmethod
+    def _is_route_format(query: str) -> bool:
+        """Örn: IST-SFO gibi ORIG-DEST formatında mı?"""
+        if "-" not in query or len(query) < 6:
+            return False
+        parts = query.split("-", 1)
+        return len(parts) == 2 and len(parts[0]) >= 2 and len(parts[1]) >= 2
+
+    def _fetch_from_route_fallback(self, query: str) -> Optional[Flight]:
+        """
+        API ve yerel liste sonuç vermediğinde: rota (ORIG-DEST) popüler havalimanları
+        sözlüğünde varsa mesafe (Haversine) ve koordinatlarla Flight döndürür.
+        Her iki kod da sözlükte olmalı; yoksa None (Sefer bulunamadı).
+        """
+        parts = query.split("-", 1)
+        orig_code = (parts[0] or "").strip()
+        dest_code = (parts[1] or "").strip()
+        if not orig_code or not dest_code:
+            return None
+
+        orig_info = _AIRPORTS_UPPER.get(orig_code)
+        dest_info = _AIRPORTS_UPPER.get(dest_code)
+        if not orig_info or not dest_info:
+            return None
+
+        olat, olon, origin_name = orig_info
+        dlat, dlon, dest_name = dest_info
+        distance_km = _haversine_km(olat, olon, dlat, dlon)
+        route_str = f"{orig_code}-{dest_code}"
+
+        return Flight(
+            flight_number=route_str,
+            route=route_str,
+            origin=origin_name,
+            destination=dest_name,
+            distance_km=round(distance_km, 1),
+            expected_passengers=_DEFAULT_PAX,
+            origin_lat=olat,
+            origin_lon=olon,
+            dest_lat=dlat,
+            dest_lon=dlon,
+        )
 
     def _fetch_from_api(self, query: str) -> Optional[Flight]:
         if not _FR24_AVAILABLE:
