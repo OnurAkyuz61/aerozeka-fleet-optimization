@@ -2,11 +2,12 @@
 """
 Havayolu tarzı dinamik arama: Uçuş Numarası / Güzergah seçimi,
 TK prefix’li uçuş no veya kalkış/varış combobox ile backend’e TK2828 / IST-JFK gönderir.
+Güzergah combobox'ları yazdıkça eşleşenleri filtreleyen autocomplete destekler.
 """
 
 import re
 import customtkinter as ctk
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 try:
     from aerozeka.core.data_fetcher import POPULAR_AIRPORTS
@@ -18,7 +19,7 @@ MODE_FLIGHT = "ucus_numarasi"
 MODE_ROUTE = "guzergah"
 
 # Havalimanı combobox için "IATA - Şehir" listesi (sözlükten türetilir)
-def _airport_display_list() -> list[str]:
+def _airport_display_list() -> List[str]:
     return sorted(
         [f"{iata} - {info[2]}" for iata, info in POPULAR_AIRPORTS.items()],
         key=lambda x: x.upper(),
@@ -53,7 +54,8 @@ class SearchBar(ctk.CTkFrame):
         self._flight_frame: Optional[ctk.CTkFrame] = None
         self._route_frame: Optional[ctk.CTkFrame] = None
         self._btn: Optional[ctk.CTkButton] = None
-        self._airport_values = _airport_display_list()
+        # Ana havalimanı listesi (autocomplete filtrelemede kullanılır; değiştirilmez)
+        self._airport_master_list: List[str] = _airport_display_list()
         self._build()
 
     def _build(self) -> None:
@@ -150,7 +152,7 @@ class SearchBar(ctk.CTkFrame):
             self._flight_entry.insert(0, digits)
 
     def _build_route_form(self) -> None:
-        """Güzergah: Kalkış ve Varış CTkComboBox yan yana (IATA - Şehir)."""
+        """Güzergah: Kalkış ve Varış CTkComboBox yan yana; yazdıkça filtreleyen autocomplete."""
         self._route_frame = ctk.CTkFrame(self._form_container, fg_color="transparent")
         left_col = ctk.CTkFrame(self._route_frame, fg_color="transparent")
         left_col.pack(side="left", padx=(0, 16))
@@ -159,7 +161,7 @@ class SearchBar(ctk.CTkFrame):
         ).pack(anchor="w", pady=(0, 4))
         self._combo_origin = ctk.CTkComboBox(
             left_col,
-            values=self._airport_values,
+            values=self._airport_master_list,
             width=200,
             height=40,
             corner_radius=8,
@@ -167,8 +169,9 @@ class SearchBar(ctk.CTkFrame):
             dropdown_font=ctk.CTkFont(size=13),
         )
         self._combo_origin.pack(anchor="w")
-        if self._airport_values:
-            self._combo_origin.set(self._airport_values[0])
+        if self._airport_master_list:
+            self._combo_origin.set(self._airport_master_list[0])
+        self._combo_origin.bind("<KeyRelease>", lambda e: self._on_airport_combo_key(self._combo_origin, e))
         right_col = ctk.CTkFrame(self._route_frame, fg_color="transparent")
         right_col.pack(side="left")
         ctk.CTkLabel(
@@ -176,7 +179,7 @@ class SearchBar(ctk.CTkFrame):
         ).pack(anchor="w", pady=(0, 4))
         self._combo_dest = ctk.CTkComboBox(
             right_col,
-            values=self._airport_values,
+            values=self._airport_master_list,
             width=200,
             height=40,
             corner_radius=8,
@@ -184,9 +187,37 @@ class SearchBar(ctk.CTkFrame):
             dropdown_font=ctk.CTkFont(size=13),
         )
         self._combo_dest.pack(anchor="w")
-        if len(self._airport_values) > 1:
-            self._combo_dest.set(self._airport_values[1])
+        if len(self._airport_master_list) > 1:
+            self._combo_dest.set(self._airport_master_list[1])
+        self._combo_dest.bind("<KeyRelease>", lambda e: self._on_airport_combo_key(self._combo_dest, e))
         self._combo_dest.bind("<Return>", lambda e: self.trigger_search())
+
+    def _filter_airports_by_query(self, query: str) -> List[str]:
+        """Ana listeden yazılan metne göre eşleşenleri döndürür (içinde geçiyor, büyük/küçük harf duyarsız)."""
+        if not query or not query.strip():
+            return list(self._airport_master_list)
+        q = query.strip().lower()
+        return [s for s in self._airport_master_list if q in s.lower()]
+
+    def _on_airport_combo_key(self, combo: ctk.CTkComboBox, event) -> None:
+        """Klavye bırakıldığında combobox değerlerini yazılan metne göre filtreler; dropdown açmayı dener."""
+        try:
+            current = combo.get() or ""
+            filtered = self._filter_airports_by_query(current)
+            combo.configure(values=filtered)
+            self._try_open_dropdown(combo)
+        except Exception:
+            pass
+
+    def _try_open_dropdown(self, combo: ctk.CTkComboBox) -> None:
+        """Açılır menüyü göstermek için güvenli tetikleyici (CTk sürümüne göre farklılık gösterebilir)."""
+        def _do():
+            try:
+                combo.focus_set()
+                combo.event_generate("<Down>")
+            except Exception:
+                pass
+        self.after(50, _do)
 
     def _on_mode_change(self) -> None:
         """Radyo değişince form alanını göster/gizle; varsayılan Güzergah."""
