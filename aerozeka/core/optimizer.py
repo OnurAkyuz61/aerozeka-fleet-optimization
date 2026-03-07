@@ -1,25 +1,42 @@
 # -*- coding: utf-8 -*-
-"""Kapasite ve menzile göre uygun uçakları filtreler, en az yakıt harcayanı (en karlı) seçer."""
+"""Kapasite ve menzile göre uygun uçakları filtreler; en az yakıt harcayan (en karlı) seçilir."""
 
 from typing import List
 
 from .models import Flight, Aircraft, AircraftCandidate
 
-# Yerel filo: name, manufacturer, capacity, fuel_per_km, image_key, menzil_km
-FLEET: List[Aircraft] = [
-    # Dar gövde (kısa/orta menzil)
-    Aircraft("Boeing 737-800", "Boeing", 189, 3.2, "boeing737", 5765),
-    Aircraft("Boeing 737-700", "Boeing", 148, 2.8, "boeing737", 6230),
-    Aircraft("Airbus A320neo", "Airbus", 180, 2.6, "airbusa320", 6500),
-    Aircraft("Airbus A321", "Airbus", 220, 3.5, "airbusa320", 5950),
-    Aircraft("Airbus A319", "Airbus", 156, 2.5, "airbusa320", 6850),
-    Aircraft("Boeing 737-900", "Boeing", 220, 3.6, "boeing737", 5925),
-    Aircraft("Embraer E195", "Embraer", 124, 2.2, "airbusa320", 4260),
-    # Geniş gövde (kıtalararası, 12.000+ km menzil)
-    Aircraft("Boeing 777-300ER", "Boeing", 396, 6.8, "boeing737", 13650),
-    Aircraft("Airbus A350-900", "Airbus", 366, 5.9, "airbusa320", 15000),
-    Aircraft("Boeing 787-9 Dreamliner", "Boeing", 296, 5.2, "boeing737", 14140),
-]
+# THY filo verisi data.ucaklar tek kaynaktır; core Aircraft (image_key ile) buradan türetilir
+try:
+    from aerozeka.data import ucaklar as _ucaklar
+except ImportError:
+    _ucaklar = []
+
+
+def _image_key_for_manufacturer(manufacturer: str) -> str:
+    """UI asset eşlemesi: boeing737 / airbusa320."""
+    return "boeing737" if manufacturer == "Boeing" else "airbusa320"
+
+
+def _build_fleet() -> List[Aircraft]:
+    """ucaklar sözlük listesinden core.models.Aircraft filo listesi oluşturur."""
+    fleet: List[Aircraft] = []
+    for u in _ucaklar:
+        name = u["id"]
+        manufacturer = "Boeing" if "Boeing" in name else ("Airbus" if "Airbus" in name else "Diğer")
+        fleet.append(
+            Aircraft(
+                name=name,
+                manufacturer=manufacturer,
+                capacity=u["kapasite"],
+                fuel_per_km=u["yakit_tuketimi_km"],
+                image_key=_image_key_for_manufacturer(manufacturer),
+                menzil_km=u["menzil_km"],
+            )
+        )
+    return fleet
+
+
+FLEET: List[Aircraft] = _build_fleet()
 
 
 class Optimizer:
@@ -30,18 +47,21 @@ class Optimizer:
 
     def run(self, flight: Flight) -> tuple[List[AircraftCandidate], str]:
         """
-        Hem kapasitesi hem menzili (menzil_km >= sefer mesafesi) yeten uçakları döndürür;
-        en düşük toplam yakıt 'ideal' işaretlenir.
+        Uygun uçakları iki kurala göre filtreler; menzili veya kapasitesi yetmeyen listede yer almaz.
+        - ucak["kapasite"] >= sefer beklenen yolcu
+        - ucak["menzil_km"] >= sefer mesafe_km (menzili yetmeyen uçak kesinlikle dahil edilmez)
+        En düşük toplam yakıt tüketeni 'ideal' olarak işaretlenir.
         """
         suitable: List[AircraftCandidate] = []
-        distance_km = flight.distance_km
+        mesafe_km = flight.distance_km
+        beklenen_yolcu = flight.expected_passengers
+
         for ac in self._fleet:
-            if ac.capacity < flight.expected_passengers:
+            if ac.capacity < beklenen_yolcu:
                 continue
-            # Menzil kontrolü: uçağın menzili sefer mesafesine yetmeli (menzil_km=0 ise kontrol yapılmaz)
-            if ac.menzil_km > 0 and ac.menzil_km < distance_km:
+            if ac.menzil_km < mesafe_km:
                 continue
-            total_fuel = distance_km * ac.fuel_per_km
+            total_fuel = mesafe_km * ac.fuel_per_km
             suitable.append(AircraftCandidate(aircraft=ac, total_fuel_liters=total_fuel, is_ideal=False))
 
         if not suitable:

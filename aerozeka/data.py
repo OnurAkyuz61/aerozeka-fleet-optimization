@@ -185,21 +185,48 @@ FLIGHTS: List[Flight] = [
     Flight(flight_number="TK2840", route="IST-GZT", origin="İstanbul", destination="Gaziantep", distance_km=1050.0, expected_passengers=110),
 ]
 
-# --- Filo (dar + geniş gövde); menzil_km kıtalararası filtre için ---
-AIRCRAFT: List[Aircraft] = [
-    # Dar gövde (kısa/orta menzil)
-    Aircraft(name="Boeing 737-800", manufacturer="Boeing", capacity=189, fuel_per_km=3.2, menzil_km=5765),
-    Aircraft(name="Boeing 737-700", manufacturer="Boeing", capacity=148, fuel_per_km=2.8, menzil_km=6230),
-    Aircraft(name="Airbus A320neo", manufacturer="Airbus", capacity=180, fuel_per_km=2.6, menzil_km=6500),
-    Aircraft(name="Airbus A321", manufacturer="Airbus", capacity=220, fuel_per_km=3.5, menzil_km=5950),
-    Aircraft(name="Airbus A319", manufacturer="Airbus", capacity=156, fuel_per_km=2.5, menzil_km=6850),
-    Aircraft(name="Boeing 737-900", manufacturer="Boeing", capacity=220, fuel_per_km=3.6, menzil_km=5925),
-    Aircraft(name="Embraer E195", manufacturer="Embraer", capacity=124, fuel_per_km=2.2, menzil_km=4260),
-    # Geniş gövde (kıtalararası, 12.000+ km)
-    Aircraft(name="Boeing 777-300ER", manufacturer="Boeing", capacity=396, fuel_per_km=6.8, menzil_km=13650),
-    Aircraft(name="Airbus A350-900", manufacturer="Airbus", capacity=366, fuel_per_km=5.9, menzil_km=15000),
-    Aircraft(name="Boeing 787-9 Dreamliner", manufacturer="Boeing", capacity=296, fuel_per_km=5.2, menzil_km=14140),
+# --- Türk Hava Yolları filo verisi (tek kaynak); id, kapasite, menzil_km, yakit_tuketimi_km ---
+ucaklar: List[dict] = [
+    # GENİŞ GÖVDE (Kıtalararası - Uzun Menzil)
+    {"id": "Airbus A350-900", "kapasite": 329, "menzil_km": 15000, "yakit_tuketimi_km": 5.8},
+    {"id": "Boeing 787-9 Dreamliner", "kapasite": 300, "menzil_km": 14140, "yakit_tuketimi_km": 5.4},
+    {"id": "Boeing 777-300 ER", "kapasite": 349, "menzil_km": 13600, "yakit_tuketimi_km": 7.5},
+    {"id": "Airbus A330-300", "kapasite": 289, "menzil_km": 11750, "yakit_tuketimi_km": 6.2},
+    {"id": "Airbus A330-200", "kapasite": 250, "menzil_km": 13450, "yakit_tuketimi_km": 5.9},
+    # DAR GÖVDE (Orta/Kısa Menzil)
+    {"id": "Airbus A321neo", "kapasite": 190, "menzil_km": 7400, "yakit_tuketimi_km": 2.8},
+    {"id": "Airbus A321-200", "kapasite": 180, "menzil_km": 5950, "yakit_tuketimi_km": 3.2},
+    {"id": "Airbus A320-200", "kapasite": 153, "menzil_km": 6100, "yakit_tuketimi_km": 3.0},
+    {"id": "Airbus A319-100", "kapasite": 132, "menzil_km": 6900, "yakit_tuketimi_km": 2.6},
+    {"id": "Boeing 737 MAX 9", "kapasite": 169, "menzil_km": 6500, "yakit_tuketimi_km": 2.7},
+    {"id": "Boeing 737-900ER", "kapasite": 151, "menzil_km": 5900, "yakit_tuketimi_km": 3.1},
+    {"id": "Boeing 737-800", "kapasite": 165, "menzil_km": 5400, "yakit_tuketimi_km": 3.3},
 ]
+
+
+def _manufacturer_from_id(ucak_id: str) -> str:
+    """Uçak id'sinden üretici adı (UI ve optimizer uyumu için)."""
+    s = (ucak_id or "").upper()
+    if "BOEING" in s:
+        return "Boeing"
+    if "AIRBUS" in s:
+        return "Airbus"
+    return "Diğer"
+
+
+def _aircraft_from_ucak(u: dict) -> Aircraft:
+    """Sözlük kaydını data.Aircraft nesnesine çevirir."""
+    return Aircraft(
+        name=u["id"],
+        manufacturer=_manufacturer_from_id(u["id"]),
+        capacity=u["kapasite"],
+        fuel_per_km=u["yakit_tuketimi_km"],
+        menzil_km=u["menzil_km"],
+    )
+
+
+# Uygulama tarafında kullanılan Aircraft listesi (ucaklar sözlüğünden türetilir)
+AIRCRAFT: List[Aircraft] = [_aircraft_from_ucak(u) for u in ucaklar]
 
 
 def get_all_flights() -> List[Flight]:
